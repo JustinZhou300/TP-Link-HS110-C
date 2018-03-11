@@ -1,5 +1,5 @@
 //Client for TP-Link HS110(AU) HW 2.0
-//Version 1.0
+//Version 1.1
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
 #define BUFFER_LEN 1024
@@ -44,45 +44,36 @@ char* decrypt(char msg[]) {
 	return output;
 }
 
-typedef struct systemCommands{
-	char *on;
-	char *off;
-	char *info;
-	char *reboot;
-}sys_cmds;
-
-typedef struct emeterCommands{
-	char *get;
-	char *gain;
-}emeter_cmds;
+typedef struct {char* cmd; char* msg;} commands; 
 
 int main(int argc, char* argv[]) {
 
 	/*---- Handling Console Arguments  ----*/
-	int cmdCode;
-	char* cmds[6];
 
-sys_cmds sys_cmds = {
-	.on = "{\"system\":{\"set_relay_state\":{\"state\":1}}}",
-	.off = "{\"system\":{\"set_relay_state\":{\"state\":0}}}",
-	.info = "{\"system\":{\"get_sysinfo\":{}}}",
-	.reboot = "{\"system\":{\"reboot\":{\"delay\":1}}}"
+commands clist[] ={
+//System commands
+{"info","{\"system\":{\"get_sysinfo\":{}}}"},
+{"on","{\"system\":{\"set_relay_state\":{\"state\":1}}}"},
+{"off","{\"system\":{\"set_relay_state\":{\"state\":0}}}"},
+{"reboot","{\"system\":{\"reboot\":{\"delay\":1}}}"},
+{"reset","{\"system\":{\"reset\":{\"delay\":1}}}"},
+{"LEDoff","{\"system\":{\"set_led_off\":{\"off\":1}}}"},
+{"LEDon","{\"system\":{\"set_led_off\":{\"off\":0}}}"},
+{"time","{\"time\":{\"get_time\":null}}"},
+//Emeter
+{"emter","{\"emeter\":{\"get_realtime\":{}}}"},
+{"gain","{\"emeter\":{\"get_vgain_igain\":{}}}"}
 };
 
-emeter_cmds emeter_cmds = {
-	.get = "{\"emeter\":{\"get_realtime\":{}}}",
-	.gain = "{\"emeter\":{\"get_vgain_igain\":{}}}",
-};
-
-	char hmessage[]= "Run the program with the arguments: (Program Path) -ip (IPV4 address) (command) \n\
-	Example: ./HS110Client.exe -ip 192.168.0.5 -on \n\
+	char hmessage[]= "Run the program with the arguments: (Program Path) -i (IPV4 address) -c (command) \n\
+	Example: ./HS110Client.exe -i 192.168.0.5 -c on \n\
 		List of commands:\n\
-		-on: Turn on device \n\
-		-off: Turn off device \n\
-		-reboot: Reboot device \n\
-		-info: Retrieve system info including MAC, device ID, hardware ID etc \n\
-		-emeter: Retrieve real time current and voltage readings \n\
-		-gain: Retrieve EMeter VGain and IGain settings" ;
+		on: Turn on device \n\
+		off: Turn off device \n\
+		reboot: Reboot device \n\
+		info: Retrieve system info including MAC, device ID, hardware ID etc \n\
+		emeter: Retrieve real time current and voltage readings \n\
+		gain: Retrieve EMeter VGain and IGain settings" ;
 
 	int opt;
 	char *cmd = NULL, *ip = NULL;
@@ -91,15 +82,10 @@ emeter_cmds emeter_cmds = {
 	static struct option long_options[] = {
 		{"help", no_argument, 0, 'h'},
 		{"ip", required_argument, 0, 'i'},
-		{"on", no_argument, 0, 'a'},
-		{"off", no_argument, 0, 'b'},
-		{"info", no_argument, 0, 'c'},
-		{"reboot", no_argument, 0, 'd'},
-		{"emeter", no_argument, 0, 'e'},
-		{"gain", no_argument, 0, 'f'},
+		{"command", required_argument, 0, 'c'},
 		{0, 0, 0, 0}};
 
-	while ((opt = getopt_long_only(argc, argv,"hi:abcdef",long_options, &long_index )) != -1){
+	while ((opt = getopt_long(argc, argv,"hi:c:",long_options, &long_index )) != -1){
 		switch (opt)
 		{
 		case '0':
@@ -111,23 +97,13 @@ emeter_cmds emeter_cmds = {
 		case 'i':
 			ip = optarg;
 			break;
-		case 'a':
-			cmd = sys_cmds.on;
-			break;
-		case 'b':
-			cmd = sys_cmds.off;
-			break;
 		case 'c':
-			cmd = sys_cmds.info;
-			break;
-		case 'd':
-			cmd = sys_cmds.reboot;
-			break;
-		case 'e':
-			cmd = emeter_cmds.get;
-			break;
-		case 'f':
-			cmd = emeter_cmds.gain;
+			for(commands* c = clist; c != clist + sizeof(clist)/sizeof(clist[0]);c++){
+				if (strcmp(c->cmd,optarg)==0) {
+					cmd = c->msg;
+					break;
+				}
+			}
 			break;
 		case '?':
 			return 1;
@@ -153,7 +129,7 @@ emeter_cmds emeter_cmds = {
 		return 1;
 	}
 	if(!cmd){
-		cmd=cmds[3];
+		cmd= clist[0].msg; //Default with get info command
 	}
 
 #ifdef _WIN32
