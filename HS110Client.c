@@ -36,7 +36,7 @@ char* encrypt(char cmd[],bool udp) {
 	{
 		char temp = key ^ (char)cmd[i];
 		key = temp;
-		output[i + 4 * padding] = temp;
+		output[i + padding] = temp;
 	}
 	return output;
 }
