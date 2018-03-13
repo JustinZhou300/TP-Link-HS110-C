@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
 		{"emter", "{\"emeter\":{\"get_realtime\":{}}}"},
 		{"gain", "{\"emeter\":{\"get_vgain_igain\":{}}}"}};
 
-	char hmessage[] = "Run the program with the arguments: (Program Path) -i (IPV4 address) -c (command) \n\
+	char hmessage[] = "Run the program with the arguments: (Program Path) -i (IPV4 address) -c (command) (additonal options) \n\
 	Example: ./HS110Client.exe -i 192.168.0.5 -c on \n\
 		List of commands:\n\
 		on: Turn on device \n\

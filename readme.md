@@ -7,9 +7,8 @@ Supports both linux and windows.
 
 To compile with Windows use MinGW with -lws2_32.
 
-Usage: In command prompt/terminal type (FilePath) -i (IPV4 address) (command)
+Usage: In command prompt/terminal type (FilePath) -i (IPV4 address) -c (command) (additional options)
 Example: ./HS110Client -i 192.168.0.2  -c on 
-
 
 List of commands:
 * on: Turn on device 
@@ -21,7 +20,7 @@ List of commands:
 * LEDoff: Turn off LED light 
 * LEDon: Turn on LED light 
 
-Options:
+Additional Options:
 
 * --udp: send command via UDP instead of TCP (allows broadcasting with ip set to 255.255.255.255)
 
