@@ -30,13 +30,12 @@ typedef struct
 } commands;
 
 static int udpflag = 0;
-char buffer[BUFFER_LEN];
 
 char *encrypt(char cmd[], bool udp) ;
 char *decrypt(char msg[], bool udp) ;
 void Closesocket(int clientSocket) ;
-int UDPTransport(int clientSocket, char *msg, char *cmd, struct sockaddr_in *HS110AddrPtr) ;
-int TCPTransport(int clientSocket, char *msg, char *cmd, struct sockaddr_in *HS110AddrPtr) ;
+int UDPTransport(int clientSocket, char *msg,char * buffer, struct sockaddr_in *HS110AddrPtr) ;
+int TCPTransport(int clientSocket, char *msg,char * buffer, struct sockaddr_in *HS110AddrPtr) ;
 
 int main(int argc, char *argv[])
 {
@@ -65,7 +64,10 @@ int main(int argc, char *argv[])
 		emeter: Retrieve real time current and voltage readings \n\
 		gain: Retrieve EMeter VGain and IGain settings\n\
 		LEDoff: Turn off LED light \n\
-		LEDon: Turn on LED light";
+		LEDon: Turn on LED light\n\
+		Additional Options:\n\
+		--udp: Send packet via udp (broadcast with ip at 255.255.255.255) \n\
+		";
 
 	int opt;
 	char *cmd = NULL, *ip = NULL;
@@ -147,21 +149,18 @@ int main(int argc, char *argv[])
 	/*---- Connect the socket to the server using the address struct ----*/
 	char *msg = encrypt(cmd, udpflag);
 	/*---- Encrypt command and send to HS110 ----*/
-	int r = udpflag ? UDPTransport(clientSocket, msg, cmd, &HS110Addr) : TCPTransport(clientSocket, msg, cmd, &HS110Addr);
+	char buffer[BUFFER_LEN];
+	int r = udpflag ? UDPTransport(clientSocket, msg,buffer,&HS110Addr) : TCPTransport(clientSocket, msg,buffer, &HS110Addr);
 	Closesocket(clientSocket);
 	return r;
 }
 
 char *encrypt(char cmd[], bool udp)
 {
-	//Note: output should not have Null termination char
 	int padding = 4 * (!udp);
-	char *output = (char *)malloc(strlen(cmd) + padding);
-	if (padding > 0)
-	{
-		memset(output, '\0', 3);
-		output[3] = (char)strlen(cmd);
-	}
+	char *output = (char *)malloc(strlen(cmd) + padding + 1);
+	memset(output, '\0', strlen(cmd) + padding + 1);
+	output[3] = (char) strlen(cmd) * (padding > 0)  ;
 	char key = 171;
 	for (int i = 0; i < strlen(cmd); i++)
 	{
@@ -197,7 +196,7 @@ void Closesocket(int clientSocket)
 #endif
 }
 
-int UDPTransport(int clientSocket, char *msg, char *cmd, struct sockaddr_in *HS110AddrPtr)
+int UDPTransport(int clientSocket, char *msg, char buffer[], struct sockaddr_in *HS110AddrPtr)
 {
 	struct sockaddr_in cliAddr;
 	int broadcast = 1;
@@ -217,7 +216,7 @@ int UDPTransport(int clientSocket, char *msg, char *cmd, struct sockaddr_in *HS1
 		printf("%s", "Error: cannot bind port\n");
 		return 1;
 	}
-	iResult = sendto(clientSocket, msg, strlen(cmd), 0,
+	iResult = sendto(clientSocket, msg, strlen(msg), 0,
 					 (struct sockaddr *)HS110AddrPtr, sizeof(*HS110AddrPtr));
 
 	int cliLen = sizeof(cliAddr);
@@ -238,7 +237,7 @@ int UDPTransport(int clientSocket, char *msg, char *cmd, struct sockaddr_in *HS1
 	int i = 0;
 	do
 	{
-		memset(buffer, '\0', sizeof(buffer));
+		memset(buffer, '\0', BUFFER_LEN);
 		cliLen = sizeof(cliAddr);
 		iResult = recvfrom(clientSocket, buffer, BUFFER_LEN, 0, (struct sockaddr *)&cliAddr, &cliLen);		
 		if (iResult < 0)
@@ -252,14 +251,15 @@ int UDPTransport(int clientSocket, char *msg, char *cmd, struct sockaddr_in *HS1
 		char *d_msg = decrypt(buffer, udpflag);
 		printf("Response received: %s\n", d_msg);
 	} while (buffer[0] != '\0');
+	return 0;
 }
 
-int TCPTransport(int clientSocket, char *msg, char *cmd, struct sockaddr_in *HS110AddrPtr)
+int TCPTransport(int clientSocket, char *msg, char buffer[], struct sockaddr_in *HS110AddrPtr)
 {
 	int iResult;
 	socklen_t addr_size;
 	addr_size = sizeof *HS110AddrPtr;
-	memset(buffer, '\0', sizeof(buffer));
+	memset(buffer, '\0', BUFFER_LEN);
 	iResult = connect(clientSocket, (struct sockaddr *)HS110AddrPtr, addr_size);
 	if (iResult == -1)
 	{
@@ -267,7 +267,7 @@ int TCPTransport(int clientSocket, char *msg, char *cmd, struct sockaddr_in *HS1
 		Closesocket(clientSocket);
 		return 1;
 	}
-	iResult = send(clientSocket, msg, strlen(cmd) + 4, 0);
+	iResult = send(clientSocket, msg, strlen(msg+4)+4, 0);
 	if (iResult == -1)
 	{
 		printf("Error: Failed to send command to device. \n ");
@@ -285,4 +285,5 @@ int TCPTransport(int clientSocket, char *msg, char *cmd, struct sockaddr_in *HS1
 		char *d_msg = decrypt(buffer, udpflag);
 		printf("Response received: %s\n", d_msg);
 	}
+	return 0;
 }
