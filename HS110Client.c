@@ -37,6 +37,21 @@ void Closesocket(int clientSocket) ;
 int UDPTransport(int clientSocket, char *msg,char * buffer, struct sockaddr_in *HS110AddrPtr) ;
 int TCPTransport(int clientSocket, char *msg,char * buffer, struct sockaddr_in *HS110AddrPtr) ;
 
+	char hmessage[] = "Run the program with the arguments: (Program Path) -i (IPV4 address) -c (command) (additonal options) \n\
+	Example: ./HS110Client.exe -i 192.168.0.5 -c on \n\
+		List of commands:\n\
+		on: Turn on device \n\
+		off: Turn off device \n\
+		reboot: Reboot device \n\
+		info: Retrieve system info including MAC, device ID, hardware ID etc \n\
+		emeter: Retrieve real time current and voltage readings \n\
+		gain: Retrieve EMeter VGain and IGain settings\n\
+		LEDoff: Turn off LED light \n\
+		LEDon: Turn on LED light\n\
+		Additional Options:\n\
+		--udp: Send packet via udp (broadcast with ip at 255.255.255.255) \n\
+		";
+
 int main(int argc, char *argv[])
 {
 	/*---- Handling Console Arguments  ----*/
@@ -54,21 +69,6 @@ int main(int argc, char *argv[])
 		{"emter", "{\"emeter\":{\"get_realtime\":{}}}"},
 		{"gain", "{\"emeter\":{\"get_vgain_igain\":{}}}"}};
 
-	char hmessage[] = "Run the program with the arguments: (Program Path) -i (IPV4 address) -c (command) (additonal options) \n\
-	Example: ./HS110Client.exe -i 192.168.0.5 -c on \n\
-		List of commands:\n\
-		on: Turn on device \n\
-		off: Turn off device \n\
-		reboot: Reboot device \n\
-		info: Retrieve system info including MAC, device ID, hardware ID etc \n\
-		emeter: Retrieve real time current and voltage readings \n\
-		gain: Retrieve EMeter VGain and IGain settings\n\
-		LEDoff: Turn off LED light \n\
-		LEDon: Turn on LED light\n\
-		Additional Options:\n\
-		--udp: Send packet via udp (broadcast with ip at 255.255.255.255) \n\
-		";
-
 	int opt;
 	char *cmd = NULL, *ip = NULL;
 	int long_index;
@@ -77,10 +77,11 @@ int main(int argc, char *argv[])
 		{"help", no_argument, 0, 'h'},
 		{"ip", required_argument, 0, 'i'},
 		{"command", required_argument, 0, 'c'},
+		{"json",required_argument,0,'j'},
 		{"udp", no_argument, &udpflag, 1},
 		{0, 0, 0, 0}};
 
-	while ((opt = getopt_long(argc, argv, "hi:c:", long_options, &long_index)) != -1)
+	while ((opt = getopt_long(argc, argv, "hi:c:j:", long_options, &long_index)) != -1)
 	{
 		switch (opt)
 		{
@@ -102,6 +103,10 @@ int main(int argc, char *argv[])
 					break;
 				}
 			}
+			break;
+		case 'j':
+			cmd = optarg;
+			puts(cmd);
 			break;
 		case '?':
 			puts( "Error: unkown command \n");
@@ -128,6 +133,7 @@ int main(int argc, char *argv[])
 	}
 	if (!cmd)
 	{
+		puts("No command entered - will default to get info command \n");
 		cmd = clist[0].msg; //Default with get info command
 	}
 
@@ -157,9 +163,10 @@ int main(int argc, char *argv[])
 
 char *encrypt(char cmd[], bool udp)
 {
-	int padding = 4 * (!udp);
-	char *output = (char *)malloc(strlen(cmd) + padding + 1);
-	memset(output, '\0', strlen(cmd) + padding + 1);
+	int padding = 4 * (!udp); //TCP messages have 4 bytes of padding
+	int outputLen = strlen(cmd) + padding + 1;
+	char *output = (char *)malloc(outputLen);
+	memset(output, '\0', outputLen);
 	output[3] = (char) strlen(cmd) * (padding > 0)  ;
 	char key = 171;
 	for (int i = 0; i < strlen(cmd); i++)
@@ -173,7 +180,7 @@ char *encrypt(char cmd[], bool udp)
 
 char *decrypt(char msg[], bool udp)
 {
-	int padding = 4 * (!udp);
+	int padding = 4 * (!udp); //TCP messages have 4 bytes of padding
 	char *output = (char *)malloc(BUFFER_LEN);
 	char key = 171;
 	for (int i = padding; i < BUFFER_LEN; i++)
@@ -198,15 +205,16 @@ void Closesocket(int clientSocket)
 
 int UDPTransport(int clientSocket, char *msg, char buffer[], struct sockaddr_in *HS110AddrPtr)
 {
+	int iResult;
+	/*----  allow broadcasting ----*/
 	struct sockaddr_in cliAddr;
 	int broadcast = 1;
-	int iResult;
 	if (setsockopt(clientSocket, SOL_SOCKET, SO_BROADCAST, (char *)&broadcast, sizeof broadcast) == -1)
 	{
 		perror("setsockopt (SO_BROADCAST)");
 		return 1;
 	}
-	/* bind any port */
+	/*---- bind any port ---- */
 	cliAddr.sin_family = AF_INET;
 	cliAddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	cliAddr.sin_port = htons(0);
@@ -216,9 +224,10 @@ int UDPTransport(int clientSocket, char *msg, char buffer[], struct sockaddr_in 
 		printf("%s", "Error: cannot bind port\n");
 		return 1;
 	}
+	/* ---- send packet  ----*/
 	iResult = sendto(clientSocket, msg, strlen(msg), 0,
 					 (struct sockaddr *)HS110AddrPtr, sizeof(*HS110AddrPtr));
-
+/* ---- Set recvfrom to timeout after 3 Seconds ---- */
 	int cliLen = sizeof(cliAddr);
 #ifdef _WIN32
 	DWORD tv = 3000;
@@ -249,7 +258,7 @@ int UDPTransport(int clientSocket, char *msg, char buffer[], struct sockaddr_in 
 		}
 		i++;	
 		char *d_msg = decrypt(buffer, udpflag);
-		printf("Response received: %s\n", d_msg);
+		printf("Response received from %s: %s\n",inet_ntoa(cliAddr.sin_addr), d_msg);
 	} while (buffer[0] != '\0');
 	return 0;
 }
@@ -257,6 +266,7 @@ int UDPTransport(int clientSocket, char *msg, char buffer[], struct sockaddr_in 
 int TCPTransport(int clientSocket, char *msg, char buffer[], struct sockaddr_in *HS110AddrPtr)
 {
 	int iResult;
+
 	socklen_t addr_size;
 	addr_size = sizeof *HS110AddrPtr;
 	memset(buffer, '\0', BUFFER_LEN);
